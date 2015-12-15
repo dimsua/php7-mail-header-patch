@@ -5,4 +5,6 @@ example: <br>
 X-PHP-Script: www.example.com/~user/testapp/send-mail.php for 10.0.0.1<br>
 <br>
 Modify from original:<br>
- - Adding header if run script from cli/cron
+- porting for php 7.0 (new zend api)
+- adding header if running from cli/cron
+- adding full path for script which send mail
