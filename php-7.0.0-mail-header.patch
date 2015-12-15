@@ -1,0 +1,91 @@
+--- php-7.0.0/ext/standard/mail.c       2015-12-01 16:36:35.000000000 +0300
++++ php-7.0.0/ext/standard/mail_modif3.c        2015-12-15 17:25:53.319405160 +0300
+@@ -335,6 +335,73 @@
+                MAIL_RET(0);
+        }
+
++       /* Patched by Giam Teck Choon */
++       /* start add additional headers with self tweaking with reference to Steve Bennett's PHP mail() header patch at http://www.lancs.ac.uk/~steveb/php-mail-header-patch/ */
++       /* Many thanks to Stefan Esser from hardened-php.net to report a security issue regarding PHP_SELF in headers thus I have included an extra check for \n and \r string */
++       char *headers2=NULL;
++
++       // add a header in the form
++       //      X-PHP-Script: <server_name><php_self> for [<forwarded_for>,]<remote-addr>
++       while(1) {
++               zval *server, *remote_addr, *script_filename, *server_name, *forwarded_for, *php_self, *pwd;
++
++               if ((server = zend_hash_str_find(&EG(symbol_table), "_SERVER", sizeof("_SERVER") - 1)) && (Z_TYPE_P(server)!=IS_ARRAY)) {
++                       break;
++              }
++               if ((remote_addr = zend_hash_str_find(Z_ARRVAL_P(server), "REMOTE_ADDR", sizeof("REMOTE_ADDR") - 1)) == NULL) {
++                       remote_addr=NULL;
++               }
++               if ((php_self = zend_hash_str_find(Z_ARRVAL_P(server), "PHP_SELF", sizeof("PHP_SELF") - 1)) == NULL) {
++                       break;
++               }
++               if ((script_filename = zend_hash_str_find(Z_ARRVAL_P(server), "SCRIPT_FILENAME", sizeof("SCRIPT_FILENAME") - 1)) == NULL) {
++                       break;
++               }
++               if ((forwarded_for = zend_hash_str_find(Z_ARRVAL_P(server), "HTTP_X_FORWARDED_FOR", sizeof("HTTP_X_FORWARDED_FOR") - 1)) == NULL) {
++                       forwarded_for=NULL;
++              }
++               if ((server_name = zend_hash_str_find(Z_ARRVAL_P(server), "SERVER_NAME", sizeof("SERVER_NAME") - 1)) == NULL) {
++                       server_name=NULL;
++               }
++               if ((pwd = zend_hash_str_find(Z_ARRVAL_P(server), "PWD", sizeof("PWD") - 1)) == NULL) {
++                        pwd=NULL;
++               }
++               headers2 = emalloc(32+(server_name?Z_STRLEN_P(server_name)+2:0)+Z_STRLEN_P(php_self)+Z_STRLEN_P(script_filename)+(forwarded_for?Z_STRLEN_P(forwarded_for)+2:0)+(remote_addr?Z_STRLEN_P(remote_addr)+2:0)+(pwd?Z_STRLEN_P(pwd)+2:0));
++               strcpy(headers2, "X-PHP-Script: ");
++               if (server_name) {
++                      strcat(headers2, Z_STRVAL_P(server_name));
++              }
++               if (strchr(Z_STRVAL_P(php_self), '\n') != NULL || strchr(Z_STRVAL_P(php_self), '\r') != NULL) {
++                       php_error_docref(NULL TSRMLS_CC, E_WARNING, "Newline found in php_self variable which might cause possible injection '%s'", Z_STRVAL_P(php_self));
++               }
++               else if (pwd) {
++                       strcat(headers2, Z_STRVAL_P(pwd));
++                       strcat(headers2, "/");
++                       strcat(headers2, Z_STRVAL_P(php_self));
++               } else {
++                       strcat(headers2, Z_STRVAL_P(php_self));
++              }
++               if (strchr(Z_STRVAL_P(script_filename), '\n') != NULL || strchr(Z_STRVAL_P(script_filename), '\r') != NULL) {
++                       php_error_docref(NULL TSRMLS_CC, E_WARNING, "Newline found in SCRIPT_FILENAME variable which might cause possible injection '%s'", Z_STRVAL_P(script_filename));
++               }
++               else if (strchr(Z_STRVAL_P(script_filename), '/') !=NULL) {
++                      strcat(headers2, " full path: ");
++                       strcat(headers2, Z_STRVAL_P(script_filename));
++               }
++              if (forwarded_for||remote_addr) {
++                      strcat(headers2, " for ");
++              }
++               if (forwarded_for) {
++                       strcat(headers2, Z_STRVAL_P(forwarded_for));
++                       strcat(headers2, ", ");
++               }
++               if (remote_addr) {
++                      strcat(headers2, Z_STRVAL_P(remote_addr));
++              }
++               break;
++       }
++       /* end add additional headers with self tweaking with reference to Steve Bennett's PHP mail() header patch at http://www.lancs.ac.uk/~steveb/php-mail-header-patch/ */
++
+        if (!sendmail_path) {
+ #if (defined PHP_WIN32 || defined NETWARE)
+                /* handle old style win smtp sending */
+@@ -398,6 +465,14 @@
+ #endif
+                fprintf(sendmail, "To: %s\n", to);
+                fprintf(sendmail, "Subject: %s\n", subject);
++               /* Patched by Giam Teck Choon */
++               /* start add additional headers with self tweaking with reference to Steve Bennett's PHP mail() header patch at http://www.lancs.ac.uk/~steveb/php-mail-header-patch/ */
++               /* Many thanks to Stefan Esser from hardened-php.net to report a security issue regarding PHP_SELF in headers thus I have included an extra check for \n and \r string */
++               if (headers2 != NULL) {
++                       fprintf(sendmail, "%s\n", headers2);
++                       efree(headers2);
++               }
++               /* end add additional headers with self tweaking with reference to Steve Bennett's PHP mail() header patch at http://www.lancs.ac.uk/~steveb/php-mail-header-patch/ */
+                if (hdr != NULL) {
+                        fprintf(sendmail, "%s\n", hdr);
+                }
